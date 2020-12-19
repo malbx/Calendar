@@ -640,6 +640,9 @@ QueryDBManager::_CategoryToFile(Category* category, BFile* file)
 	file->WriteAttr("Category:Color", B_RGB_COLOR_TYPE, 0, &color,
 		sizeof(rgb_color));
 
+	Category::CategorySource source = category->GetSource();
+	file->WriteAttr("Category:Source", B_INT32_TYPE, 0, &source, 4);
+
 	return true;
 }
 

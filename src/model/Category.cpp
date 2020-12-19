@@ -12,32 +12,25 @@
 
 #include "ColorConverter.h"
 
-
 Category::Category(BString name, rgb_color color,
-	const char* id /*= NULL*/)
+	const char* id, CategorySource source)
+	:
+	fId(id),
+	fName(name),
+	fColor(color),
+	fSource(source)
 {
-		fName = name;
-        fColor = color;
-
-		if (id == NULL) {
-			fId = BUuid().SetToRandom().ToString();
-		}
-		else
-			fId = id;
 }
 
 
 Category::Category(BString name, BString color,
-	const char* id /*= NULL*/)
+	const char* id, CategorySource source)
+	:
+	fId(id),
+	fName(name),
+	fColor(HexToRGB(color)),
+	fSource(source)
 {
-		fName = name;
-		fColor = HexToRGB(color);
-
-		if (id == NULL) {
-			fId = BUuid().SetToRandom().ToString();
-		}
-		else
-			fId = id;
 }
 
 
@@ -74,6 +67,12 @@ const char*
 Category::GetId()
 {
 	return fId.String();
+}
+
+Category::CategorySource
+Category::GetSource()
+{
+	return fSource;
 }
 
 
