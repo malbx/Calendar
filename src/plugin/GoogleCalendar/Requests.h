@@ -15,6 +15,7 @@
 #include <HttpHeaders.h>
 #include <HttpRequest.h>
 #include <Json.h>
+#include <iostream>
 
 
 class ProtocolListener : public BUrlProtocolListener {
@@ -122,10 +123,6 @@ class Requests {
 				request->Result());
 
 			int32 statusCode = result.StatusCode();
-			if (statusCode != 200) {
-				printf("Response code:  %d \n", statusCode);
-				return B_ERROR;
-			}
 
 			delete(request);
 
@@ -136,12 +133,20 @@ class Requests {
 				printf("No Json data found in response \n");
 				return B_ERROR;
 			}
+			std::cout << "Response: " << responseJson.String() << std::endl;
+			std::cout << "........" << std::endl; 
+			if (statusCode != 200) {
+				printf("Response code:  %d \n", statusCode);
+				return B_ERROR;
+			}
 
 			status_t status = BJson::Parse(responseJson, responseMessage);
+			std::cout << "Hmmm........" << std::endl; 
 			if (status == B_BAD_DATA) {
 				printf("Parser choked on JSON:\n%s\n", responseJson.String());
 				return B_ERROR;
 			}
+			std::cout << "Hmmm........" << std::endl; 
 
 			return B_OK;
 		}

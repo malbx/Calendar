@@ -2,6 +2,8 @@
  * Copyight 2017 Akshay Agarwal, agarwal.akshay.akshay8@gmail.com
  * All rights reserved. Distributed under the terms of the MIT License.
  */
+#include <iostream>
+#include <ostream>
 #include <sstream>
 #include <time.h>
 
@@ -21,6 +23,7 @@
 #include "Category.h"
 #include "Event.h"
 #include "EventSync.h"
+#include "ObjectList.h"
 #include "Requests.h"
 #include "QueryDBManager.h"
 
@@ -124,6 +127,7 @@ EventSync::EventSync()
 	fAuthCode()
 {
 	fDBManager = new QueryDBManager();
+	fCalendars = new BObjectList<Category>();
 	fEvents = new BList();
 	fCancelledEvents = new BStringList();
 }
@@ -132,6 +136,7 @@ EventSync::EventSync()
 EventSync::~EventSync()
 {
 	delete fDBManager;
+	delete fCalendars;
 	delete fEvents;
 	delete fCancelledEvents;
 }
@@ -147,6 +152,7 @@ EventSync::Sync()
 	else
 		RequestAuthorizationCode();
 
+	GetCalendars();
 	if (GetEvents() != B_OK)
 		return B_ERROR;
 
@@ -262,52 +268,115 @@ EventSync::LoadSyncToken()
 }
 
 status_t
-EventSync::GetEvents()
+EventSync::GetCalendars()
 {
-	BString url("https://www.googleapis.com/calendar/v3/calendars/primary/events");
-
-	if (LoadSyncToken() == B_OK) {
-		url.Append("?syncToken=");
-		url.Append(fLastSyncToken);
-	}
-	else
-		url.Append("?showDeleted=true");
-
+	std::cout << "\n\n\nRetrieving Calendars...\n\n\n" << std::endl;
+	BString url("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=owner");
+	// if (LoadSyncToken() == B_OK) {
+		// url.Append("&syncToken=");
+		// url.Append(fLastSyncToken);
+	// }
+	
 	BString  auth;
 	auth.SetToFormat("OAuth %s", fToken.String());
 	BHttpHeaders* headers = new BHttpHeaders();
 	headers->AddHeader("Authorization", auth.String());
-
-	BMessage eventJson;
+	
+	BMessage calendarJson;
 	BString nextPageToken;
-	BString nextSyncToken;
 
 	do {
-		if (!eventJson.IsEmpty())
-			eventJson.MakeEmpty();
-
-		if (Requests::Request(url, B_HTTP_GET, headers, NULL, NULL, eventJson)
+		if (!calendarJson.IsEmpty())
+			calendarJson.MakeEmpty();
+		std::cout << "\n\n\n\nGET CALENDARS...\n" << std::endl;
+		if (Requests::Request(url, B_HTTP_GET, headers, NULL, NULL, calendarJson)
 				== B_ERROR)
 			return B_ERROR;
+		
+		std::cout << "CALENDARS..." << std::endl;
+		BMessage items;
+		calendarJson.FindMessage("items", &items);
+		int32 eventsCount = items.CountNames(B_ANY_TYPE);
+		if (eventsCount == 0) {
+			fprintf(stderr, "0 items found in API response.\n");
+			return B_OK;
+		}
 
-		if (ParseEvent(&eventJson) == B_ERROR)
-			return B_ERROR;
+		for (int32 currentEvent = 0; currentEvent < eventsCount; currentEvent++) {
+			BMessage msg;
+			items.FindMessage(std::to_string(currentEvent).c_str(), &msg);
+			const char *id, *summary, *color;
 
-		nextPageToken = BString(eventJson.GetString("nextPageToken", "NOT_FOUND"));
+			msg.FindString("id", &id);
+			msg.FindString("summary", &summary);
+			msg.FindString("backgroundColor", &color);
+
+			Category *category = new Category(BString(summary), BString(color), BString(id));
+
+			fCalendars->AddItem(category);
+		}
+
+		nextPageToken = BString(calendarJson.GetString("nextPageToken", "NOT_FOUND"));
 		url.Append("?pageToken=");
 		url.Append(nextPageToken);
 
 	} while (nextPageToken.Compare("NOT_FOUND") != 0);
 
-	nextSyncToken  = BString(eventJson.GetString("nextSyncToken", "NOT_FOUND"));
+	return B_OK;
+}
 
-	BPasswordKey key(nextSyncToken, B_KEY_PURPOSE_WEB, "nextSyncToken");
-	BKeyStore keyStore;
-	keyStore.AddKey(kAppName, key);
+status_t
+EventSync::GetEvents()
+{
+	for (int i = 0; i < fCalendars->CountItems(); i++) {
+		Category *category = fCalendars->ItemAt(i);
+		BString url;
+		url.SetToFormat("https://www.googleapis.com/calendar/v3/calendars/%s/events",
+				category->GetId());
 
-	if (nextSyncToken.Compare("NOT_FOUND") == 0) {
-		fprintf(stderr, "Error: nextSyncToken not found in API response.\n");
-		return B_ERROR;
+		// if (LoadSyncToken() == B_OK) {
+			// url.Append("?syncToken=");
+			// url.Append(fLastSyncToken);
+		// }
+		// else
+			url.Append("?showDeleted=true");
+
+		BString  auth;
+		auth.SetToFormat("OAuth %s", fToken.String());
+		BHttpHeaders* headers = new BHttpHeaders();
+		headers->AddHeader("Authorization", auth.String());
+
+		BMessage eventJson;
+		BString nextPageToken;
+		BString nextSyncToken;
+
+		do {
+			if (!eventJson.IsEmpty())
+				eventJson.MakeEmpty();
+
+			if (Requests::Request(url, B_HTTP_GET, headers, NULL, NULL, eventJson)
+					== B_ERROR)
+				return B_ERROR;
+
+			if (ParseEvent(&eventJson, category) == B_ERROR)
+				return B_ERROR;
+
+			nextPageToken = BString(eventJson.GetString("nextPageToken", "NOT_FOUND"));
+			url.Append("?pageToken=");
+			url.Append(nextPageToken);
+
+		} while (nextPageToken.Compare("NOT_FOUND") != 0);
+
+		nextSyncToken  = BString(eventJson.GetString("nextSyncToken", "NOT_FOUND"));
+
+		BPasswordKey key(nextSyncToken, B_KEY_PURPOSE_WEB, "nextSyncToken");
+		BKeyStore keyStore;
+		keyStore.AddKey(kAppName, key);
+
+		if (nextSyncToken.Compare("NOT_FOUND") == 0) {
+			fprintf(stderr, "Error: nextSyncToken not found in API response.\n");
+			return B_ERROR;
+		}
 	}
 
 	return B_OK;
@@ -315,7 +384,7 @@ EventSync::GetEvents()
 
 
 status_t
-EventSync::ParseEvent(BMessage* eventJson)
+EventSync::ParseEvent(BMessage* eventJson, Category *category)
 {
 	BMessage items;
 	eventJson->FindMessage("items", &items);
@@ -418,18 +487,18 @@ EventSync::ParseEvent(BMessage* eventJson)
 
 		notified = (difftime(startDateTime, BDateTime::CurrentDateTime(B_LOCAL_TIME).Time_t()) < 0) ? true : false;
 
-		BList* categoryList = fDBManager->GetAllCategories();
-		Category* category;
-		for (int32 i = 0; i < categoryList->CountItems(); i++) {
-			category = ((Category*)categoryList->ItemAt(i));
-			if (BString(category->GetName()) == BString("Default"))
-				break;
-		}
+		// BList* categoryList = fDBManager->GetAllCategories();
+		// Category* category;
+		// for (int32 i = 0; i < categoryList->CountItems(); i++) {
+		//     category = ((Category*)categoryList->ItemAt(i));
+		//     if (BString(category->GetName()) == BString("Default"))
+		//         break;
+		// }
 
-		Category* newCategory = new Category(*category);
+		// Category* newCategory = new Category(*category);
 
 		Event* newEvent = new Event(name, place, description, allDay,
-			startDateTime, endDateTime, newCategory, notified, updated,
+			startDateTime, endDateTime, category, notified, updated,
 			status, id);
 
 		fEvents->AddItem(newEvent);

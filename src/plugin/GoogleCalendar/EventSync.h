@@ -5,6 +5,8 @@
 #ifndef _EVENT_SYNC_H
 #define _EVENT_SYNC_H
 
+#include "Category.h"
+#include "ObjectList.h"
 #include <InterfaceKit.h>
 #include <String.h>
 
@@ -51,12 +53,14 @@ class EventSync {
 
 		status_t					SyncWithDatabase();
 
+		status_t					GetCalendars();
+
 		status_t					AddEvent(Event* event);
 		status_t					UpdateEvent(Event* event);
 		status_t					DeleteEvent(Event* event);
 		status_t					GetEvents();
 
-		status_t					ParseEvent(BMessage* eventJson);
+		status_t					ParseEvent(BMessage* eventJson, Category* category);
 
 		BString						TimeToRFC3339(time_t timeT);
 		time_t						RFC3339ToTime(const char* timeString,
@@ -70,6 +74,7 @@ class EventSync {
 		BString						fAuthCode;
 		QueryDBManager*				fDBManager;
 		BString						fLastSyncToken;
+		BObjectList<Category>*		fCalendars;
 		BList*						fEvents;
 		BStringList*				fCancelledEvents;
 };
